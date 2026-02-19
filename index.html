@@ -157,23 +157,22 @@
     }
     .canvas-wrap { position: relative; }
 
-    /* ── D3 Bubble Matrix ────────────────────────────────────────────────── */
-    #bubble-matrix-container {
+    /* ── D3 Knowledge Graph ──────────────────────────────────────────────── */
+    #kg-container {
       width: 100%;
-      overflow-x: auto;
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(15,23,42,0.5);
     }
-    #bubble-svg {
+    #kg-svg {
       display: block;
+      width: 100%;
+      cursor: grab;
     }
-    .bubble-circle {
-      cursor: pointer;
-      transition: opacity 0.15s;
-    }
-    .bubble-circle:hover { opacity: 0.75; stroke: #fff; stroke-width: 1.5px; }
-    .bubble-axis text { font-size: 11px; fill: var(--text-muted); }
-    .bubble-axis line, .bubble-axis path { stroke: var(--border); }
-    .bm-label { font-size: 11px; fill: var(--text); font-weight: 500; }
-    .bm-grid-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3,3; }
+    #kg-svg:active { cursor: grabbing; }
+    .kg-node { cursor: pointer; }
+    .kg-node circle { transition: opacity 0.18s; }
+    .kg-node text   { user-select: none; }
 
     /* ── D3 Heatmap ─────────────────────────────────────────────────────── */
     #heatmap-container { overflow-x: auto; }
@@ -261,26 +260,6 @@
     .role-support  { background: #78350f; color: #fde68a; }
     .role-viewer   { background: #1e3a5f; color: #bae6fd; }
 
-    /* ── Page detail panel ───────────────────────────────────────────────── */
-    #drill-panel {
-      display: none;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.25rem;
-      margin-top: 1rem;
-    }
-    #drill-panel.visible { display: block; }
-    #drill-panel h3 { font-size: .85rem; font-weight: 600; margin-bottom: .75rem; }
-    #drill-close {
-      float: right;
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 1rem;
-      line-height: 1;
-    }
 
     /* ── Scrollbar ───────────────────────────────────────────────────────── */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -303,7 +282,7 @@
 <!-- ── Nav ─────────────────────────────────────────────────────────────── -->
 <nav>
   <a href="#overview"  class="active">Overview</a>
-  <a href="#bubble"    >Bubble Matrix</a>
+  <a href="#bubble"    >Knowledge Graph</a>
   <a href="#heatmap"   >Heatmap</a>
   <a href="#traffic"   >Traffic Trends</a>
   <a href="#pages"     >Top Pages</a>
@@ -321,26 +300,15 @@
     </div>
   </section>
 
-  <!-- ════ 2. BUBBLE MATRIX ═══════════════════════════════════════════════ -->
+  <!-- ════ 2. KNOWLEDGE GRAPH ════════════════════════════════════════════ -->
   <section id="bubble">
-    <h2>User × Page Bubble Matrix</h2>
+    <h2>User–Category Knowledge Graph</h2>
     <div class="card">
-      <div class="card-title">Access frequency by user and page</div>
-      <div class="card-sub">Bubble size = number of requests · Colour = page category · Click a category to filter</div>
+      <div class="card-title">Access relationships between users and page categories</div>
+      <div class="card-sub">Node size = total requests · Edge thickness = request flow · Drag nodes · Scroll to zoom · Hover to highlight</div>
 
-      <div class="filter-bar" id="cat-filters">
-        <button class="filter-btn active" data-cat="all" onclick="filterBubbles('all')">All categories</button>
-      </div>
-
-      <div id="bubble-matrix-container">
-        <svg id="bubble-svg"></svg>
-      </div>
-
-      <!-- drill-down panel -->
-      <div id="drill-panel">
-        <button id="drill-close" onclick="closeDrill()">✕</button>
-        <h3 id="drill-title">Category detail</h3>
-        <svg id="drill-svg"></svg>
+      <div id="kg-container">
+        <svg id="kg-svg"></svg>
       </div>
 
       <div class="legend" id="cat-legend"></div>
@@ -469,6 +437,15 @@ const STATUS_COLORS = {
   '500': '#f472b6',
 };
 
+const ROLE_COLORS = {
+  manager:   '#60a5fa',
+  admin:     '#f87171',
+  analyst:   '#34d399',
+  developer: '#c084fc',
+  support:   '#fbbf24',
+  viewer:    '#94a3b8',
+};
+
 Chart.defaults.color = '#94a3b8';
 Chart.defaults.borderColor = '#334155';
 
@@ -504,16 +481,15 @@ function initAll(data) {
   buildStats(data);
   // Each chart is isolated — a failure in one never blocks the others
   const run = (fn, label) => { try { fn(data); } catch(e) { console.error(label + ':', e); } };
-  run(buildBubbleMatrix, 'buildBubbleMatrix');
-  run(buildHeatmap,      'buildHeatmap');
-  run(buildDailyChart,   'buildDailyChart');
-  run(buildHourlyChart,  'buildHourlyChart');
-  run(buildTopPagesChart,'buildTopPagesChart');
-  run(buildUserChart,    'buildUserChart');
+  run(buildKnowledgeGraph,'buildKnowledgeGraph');
+  run(buildHeatmap,       'buildHeatmap');
+  run(buildDailyChart,    'buildDailyChart');
+  run(buildHourlyChart,   'buildHourlyChart');
+  run(buildTopPagesChart, 'buildTopPagesChart');
+  run(buildUserChart,     'buildUserChart');
   buildUserTable(data);
-  run(buildCatDonut,     'buildCatDonut');
-  run(buildStatusDonut,  'buildStatusDonut');
-  buildCatFilters(data);
+  run(buildCatDonut,      'buildCatDonut');
+  run(buildStatusDonut,   'buildStatusDonut');
   buildLegend(data);
   initNavHighlight();
 }
@@ -560,264 +536,180 @@ function fmtBytes(b) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   BUBBLE MATRIX  (D3)
-   Y = users, X = pages (grouped by category), radius = requests
+   KNOWLEDGE GRAPH  (D3 force-directed)
+   Users ↔ Page categories — edge weight = total requests from that user
 ══════════════════════════════════════════════════════════════════════════ */
-let currentCatFilter = 'all';
-let globalData = null;
+function buildKnowledgeGraph(data) {
+  const container = document.getElementById('kg-container');
+  const W = container.clientWidth || 900;
+  const H = 560;
 
-function buildBubbleMatrix(data) {
-  globalData = data;
-  renderBubbles(data, 'all');
-}
-
-function filterBubbles(cat) {
-  currentCatFilter = cat;
-  // update active button
-  document.querySelectorAll('.filter-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.cat === cat);
+  // ── Aggregate user → category request counts ─────────────────────────
+  const pagesCat = {};
+  data.pages.forEach(p => { pagesCat[p.path] = p.category; });
+  const edgeMap = {};
+  data.bubble_matrix.forEach(b => {
+    const cat = pagesCat[b.page];
+    if (!cat) return;
+    const key = `u:${b.user}||c:${cat}`;
+    edgeMap[key] = (edgeMap[key] || 0) + b.count;
   });
-  renderBubbles(globalData, cat);
-  closeDrill();
-}
 
-function renderBubbles(data, catFilter) {
-  const container = document.getElementById('bubble-matrix-container');
-  const svg       = d3.select('#bubble-svg');
+  // ── Nodes ─────────────────────────────────────────────────────────────
+  const userNodes = data.users.map(u => ({
+    id: 'u:' + u.id, label: u.id, type: 'user',
+    role: u.role, total: u.total_requests, bytes: u.total_bytes,
+  }));
+  const catNodes = Object.entries(data.category_totals).map(([cat, total]) => ({
+    id: 'c:' + cat, label: cat, type: 'cat', cat, total,
+  }));
+  const nodes = [...userNodes, ...catNodes];
+
+  // ── Links ─────────────────────────────────────────────────────────────
+  const edgeVals = Object.values(edgeMap);
+  const maxEdge  = Math.max(...edgeVals);
+  const lwScale  = d3.scaleSqrt().domain([0, maxEdge]).range([0.8, 7]);
+  const lopScale = d3.scaleLinear().domain([0, maxEdge]).range([0.1, 0.6]);
+
+  const links = Object.entries(edgeMap).map(([key, count]) => {
+    const [source, target] = key.split('||');
+    return { source, target, count, cat: target.replace('c:', '') };
+  });
+
+  // ── Radius scales ─────────────────────────────────────────────────────
+  const maxUR = Math.max(...userNodes.map(n => n.total));
+  const maxCR = Math.max(...catNodes.map(n => n.total));
+  const uRScale = d3.scaleSqrt().domain([0, maxUR]).range([12, 26]);
+  const cRScale = d3.scaleSqrt().domain([0, maxCR]).range([20, 38]);
+  const nodeR   = d => d.type === 'cat' ? cRScale(d.total) : uRScale(d.total);
+
+  // ── SVG + zoom ────────────────────────────────────────────────────────
+  const svg = d3.select('#kg-svg').attr('width', W).attr('height', H);
   svg.selectAll('*').remove();
+  const zoomG = svg.append('g');
+  svg.call(
+    d3.zoom().scaleExtent([0.25, 4])
+      .on('zoom', e => zoomG.attr('transform', e.transform))
+  );
 
-  const users = data.users.map(u => u.id);
+  // ── Force simulation ──────────────────────────────────────────────────
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id)
+      .distance(d => 100 + lwScale(d.count) * 14).strength(0.35))
+    .force('charge', d3.forceManyBody().strength(-420))
+    .force('center', d3.forceCenter(W / 2, H / 2).strength(0.06))
+    .force('collide', d3.forceCollide(d => nodeR(d) + 14).strength(0.8));
 
-  // Filter pages
-  let pages = data.pages;
-  if (catFilter !== 'all') pages = pages.filter(p => p.category === catFilter);
+  // ── Draw edges ────────────────────────────────────────────────────────
+  const linkSel = zoomG.append('g')
+    .selectAll('line').data(links).join('line')
+      .attr('stroke',         d => CAT_COLORS[d.cat] || '#475569')
+      .attr('stroke-width',   d => lwScale(d.count))
+      .attr('stroke-opacity', d => lopScale(d.count))
+      .attr('stroke-linecap', 'round');
 
-  // Sort pages: by category order then alphabetically
-  const CAT_ORDER = ['navigation','dashboard','reports','calendar','wiki','admin','help','projects','shared','personal'];
-  pages = [...pages].sort((a,b) => {
-    const ci = CAT_ORDER.indexOf(a.category) - CAT_ORDER.indexOf(b.category);
-    return ci !== 0 ? ci : a.path.localeCompare(b.path);
-  });
+  // ── Draw nodes ────────────────────────────────────────────────────────
+  const nodeSel = zoomG.append('g')
+    .selectAll('g').data(nodes).join('g')
+      .attr('class', 'kg-node')
+      .call(d3.drag()
+        .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+        .on('end',   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
 
-  // Build lookup
-  const countMap = {};
-  data.bubble_matrix.forEach(b => { countMap[`${b.user}||${b.page}`] = b.count; });
+  // glow ring behind circle for category nodes
+  nodeSel.filter(d => d.type === 'cat')
+    .append('circle')
+      .attr('r', d => cRScale(d.total) + 6)
+      .attr('fill', 'none')
+      .attr('stroke', d => CAT_COLORS[d.cat] || '#475569')
+      .attr('stroke-width', 1)
+      .attr('stroke-opacity', 0.18)
+      .attr('pointer-events', 'none');
 
-  const margin  = { top: 20, right: 20, bottom: 80, left: 90 };
-  const cellW   = Math.max(14, Math.min(28, Math.floor((container.clientWidth - margin.left - margin.right) / pages.length)));
-  const cellH   = 38;
-  const width   = pages.length * cellW + margin.left + margin.right;
-  const height  = users.length * cellH + margin.top  + margin.bottom;
+  nodeSel.append('circle')
+    .attr('r', nodeR)
+    .attr('fill', d => d.type === 'cat'
+      ? (CAT_COLORS[d.cat]        || '#94a3b8') + '28'
+      : (ROLE_COLORS[d.role]      || '#94a3b8') + '28')
+    .attr('stroke', d => d.type === 'cat'
+      ? (CAT_COLORS[d.cat]        || '#94a3b8')
+      : (ROLE_COLORS[d.role]      || '#94a3b8'))
+    .attr('stroke-width', 1.8);
 
-  svg.attr('width', width).attr('height', height);
+  nodeSel.append('text')
+    .text(d => d.label)
+    .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'central')
+    .attr('font-size', d => d.type === 'cat' ? 9.5 : 8.5)
+    .attr('font-weight', d => d.type === 'cat' ? 700 : 500)
+    .attr('fill', d => d.type === 'cat'
+      ? (CAT_COLORS[d.cat]   || '#94a3b8')
+      : (ROLE_COLORS[d.role] || '#94a3b8'))
+    .attr('pointer-events', 'none');
 
-  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
-
-  const xScale = d3.scaleBand().domain(pages.map(p=>p.path)).range([0, pages.length * cellW]).padding(0);
-  const yScale = d3.scaleBand().domain(users).range([0, users.length * cellH]).padding(0);
-
-  // Grid lines (horizontal)
-  users.forEach(u => {
-    g.append('line')
-      .attr('class','bm-grid-line')
-      .attr('x1',0).attr('x2', pages.length*cellW)
-      .attr('y1', yScale(u) + cellH/2)
-      .attr('y2', yScale(u) + cellH/2);
-  });
-
-  // Category dividers (vertical) – only in 'all' view
-  if (catFilter === 'all') {
-    let prevCat = null, xPos = 0;
-    pages.forEach((p,i) => {
-      if (p.category !== prevCat && i > 0) {
-        g.append('line').attr('class','bm-grid-line')
-          .attr('x1', xPos).attr('x2', xPos)
-          .attr('y1', -10).attr('y2', users.length*cellH + 10)
-          .attr('stroke', '#475569').attr('stroke-dasharray','none').attr('stroke-width',1);
+  // ── Tooltip + highlight on hover ──────────────────────────────────────
+  nodeSel
+    .on('mousemove', (event, d) => {
+      if (d.type === 'user') {
+        const u = data.users.find(x => x.id === d.label);
+        showTip(event,
+          `<strong>${d.label}</strong>` +
+          `Role: ${u.role}<br>` +
+          `Requests: ${u.total_requests.toLocaleString()}<br>` +
+          `Data: ${fmtBytes(u.total_bytes)}`);
+      } else {
+        showTip(event,
+          `<strong>${d.label}</strong>` +
+          `Total requests: ${d.total.toLocaleString()}`);
       }
-      prevCat  = p.category;
-      xPos    += cellW;
+      // highlight connected nodes, dim the rest
+      linkSel.attr('stroke-opacity', l =>
+        (l.source.id === d.id || l.target.id === d.id)
+          ? Math.min(lopScale(l.count) + 0.4, 1) : 0.03);
+      nodeSel.select('circle:last-of-type').attr('opacity', n =>
+        n.id === d.id ||
+        links.some(l => (l.source.id === d.id && l.target.id === n.id) ||
+                        (l.target.id === d.id && l.source.id === n.id))
+          ? 1 : 0.12);
+      nodeSel.select('text').attr('opacity', n =>
+        n.id === d.id ||
+        links.some(l => (l.source.id === d.id && l.target.id === n.id) ||
+                        (l.target.id === d.id && l.source.id === n.id))
+          ? 1 : 0.12);
+    })
+    .on('mouseleave', () => {
+      hideTip();
+      linkSel.attr('stroke-opacity', l => lopScale(l.count));
+      nodeSel.select('circle:last-of-type').attr('opacity', 1);
+      nodeSel.select('text').attr('opacity', 1);
     });
-  }
 
-  // Max count for radius scaling
-  const allCounts = [];
-  users.forEach(u => pages.forEach(p => {
-    const c = countMap[`${u}||${p.path}`] || 0;
-    if (c) allCounts.push(c);
-  }));
-  const maxCount = d3.max(allCounts) || 1;
-  const rScale   = d3.scaleSqrt().domain([0, maxCount]).range([0, cellW * 0.48]);
-
-  // Bubbles
-  users.forEach(u => {
-    pages.forEach(p => {
-      const count = countMap[`${u}||${p.path}`] || 0;
-      if (!count) return;
-      const cx = xScale(p.path) + cellW / 2;
-      const cy = yScale(u)      + cellH / 2;
-      const r  = rScale(count);
-      g.append('circle')
-        .attr('class','bubble-circle')
-        .attr('cx', cx).attr('cy', cy)
-        .attr('r', r)
-        .attr('fill', CAT_COLORS[p.category] || '#94a3b8')
-        .attr('opacity', 0.82)
-        .on('mousemove', (event) => showTip(event,
-          `<strong>${u} → ${p.path}</strong>
-           Requests: <b>${count.toLocaleString()}</b><br>
-           Category: ${p.category}`))
-        .on('mouseleave', hideTip)
-        .on('click', () => showDrill(data, p.category));
-    });
-  });
-
-  // X axis labels — show category name below each group or page path
-  if (catFilter === 'all') {
-    // Show category names centred over their group
-    const catGroups = d3.group(pages, p => p.category);
-    catGroups.forEach((pgs, cat) => {
-      const first = xScale(pgs[0].path);
-      const last  = xScale(pgs[pgs.length-1].path) + cellW;
-      const cx    = (first + last) / 2;
-      g.append('text')
-        .attr('x', cx).attr('y', users.length * cellH + 15)
-        .attr('text-anchor','middle')
-        .attr('font-size', 10)
-        .attr('fill', CAT_COLORS[cat] || '#94a3b8')
-        .attr('font-weight', 600)
-        .text(cat);
-    });
-  } else {
-    // Show page names (rotated)
-    g.selectAll('.x-label')
-      .data(pages)
-      .join('text')
-        .attr('class','x-label')
-        .attr('x', p => xScale(p.path) + cellW/2)
-        .attr('y', users.length * cellH + 6)
-        .attr('text-anchor','end')
-        .attr('font-size', 9)
-        .attr('fill','#94a3b8')
-        .attr('transform', p => `rotate(-45, ${xScale(p.path)+cellW/2}, ${users.length*cellH+6})`)
-        .text(p => p.path.replace('/users/','').replace('/projects/',''));
-  }
-
-  // Y axis (user names)
-  g.selectAll('.y-label')
-    .data(users)
-    .join('text')
-      .attr('class','bm-label')
-      .attr('x', -8)
-      .attr('y', u => yScale(u) + cellH/2)
-      .attr('text-anchor','end')
-      .attr('dominant-baseline','central')
-      .attr('font-size', 11)
-      .text(u => u);
-}
-
-/* ── Drill-down: show individual pages in a category ───────────────────── */
-function showDrill(data, cat) {
-  const panel = document.getElementById('drill-panel');
-  panel.classList.add('visible');
-  document.getElementById('drill-title').textContent = `Category: ${cat}`;
-
-  const svg     = d3.select('#drill-svg');
-  svg.selectAll('*').remove();
-
-  const users   = data.users.map(u => u.id);
-  const pages   = data.pages.filter(p => p.category === cat)
-                             .sort((a,b) => a.path.localeCompare(b.path));
-  const countMap = {};
-  data.bubble_matrix.forEach(b => { countMap[`${b.user}||${b.page}`] = b.count; });
-
-  const cellW   = 60, cellH = 36;
-  const margin  = { top: 10, right: 20, bottom: 90, left: 90 };
-  const width   = pages.length * cellW + margin.left + margin.right;
-  const height  = users.length * cellH + margin.top  + margin.bottom;
-
-  svg.attr('width', Math.max(width, 500)).attr('height', height);
-  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
-
-  const allCounts = [];
-  users.forEach(u => pages.forEach(p => {
-    const c = countMap[`${u}||${p.path}`] || 0;
-    if (c) allCounts.push(c);
-  }));
-  const rScale = d3.scaleSqrt().domain([0, d3.max(allCounts)||1]).range([0, cellW*0.46]);
-  const color  = CAT_COLORS[cat] || '#94a3b8';
-
-  users.forEach(u => {
-    pages.forEach(p => {
-      const count = countMap[`${u}||${p.path}`] || 0;
-      if (!count) return;
-      const cx = pages.indexOf(p) * cellW + cellW/2;
-      const cy = users.indexOf(u) * cellH + cellH/2;
-      g.append('circle')
-        .attr('cx', cx).attr('cy', cy).attr('r', rScale(count))
-        .attr('fill', color).attr('opacity', 0.8)
-        .on('mousemove', ev => showTip(ev,
-          `<strong>${u} → ${p.path}</strong>Requests: <b>${count.toLocaleString()}</b>`))
-        .on('mouseleave', hideTip);
-    });
-  });
-
-  // X labels
-  g.selectAll('.x-lab').data(pages).join('text')
-    .attr('class','x-lab')
-    .attr('x', (p,i) => i*cellW + cellW/2).attr('y', users.length*cellH+8)
-    .attr('text-anchor','end').attr('font-size',9).attr('fill','#94a3b8')
-    .attr('transform',(p,i)=>`rotate(-45,${i*cellW+cellW/2},${users.length*cellH+8})`)
-    .text(p => p.path.split('/').slice(-1)[0]);
-
-  // Y labels
-  g.selectAll('.y-lab').data(users).join('text')
-    .attr('class','y-lab')
-    .attr('x',-8).attr('y',(u,i)=>i*cellH+cellH/2)
-    .attr('text-anchor','end').attr('dominant-baseline','central')
-    .attr('font-size',11).attr('fill',color).attr('font-weight',600)
-    .text(u=>u);
-}
-function closeDrill() {
-  document.getElementById('drill-panel').classList.remove('visible');
-  d3.select('#drill-svg').selectAll('*').remove();
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   CATEGORY FILTER BUTTONS
-══════════════════════════════════════════════════════════════════════════ */
-function buildCatFilters(data) {
-  const cats    = [...new Set(data.pages.map(p => p.category))];
-  const bar     = document.getElementById('cat-filters');
-  cats.forEach(cat => {
-    const btn = document.createElement('button');
-    btn.className  = 'filter-btn';
-    btn.dataset.cat = cat;
-    btn.textContent = cat;
-    btn.style.cssText = `background:${CAT_COLORS[cat]}22;border-color:${CAT_COLORS[cat]}55;color:${CAT_COLORS[cat]}`;
-    btn.onclick = () => filterBubbles(cat);
-    bar.appendChild(btn);
-  });
-  // style the active color for click
-  document.querySelectorAll('.filter-btn').forEach(b => {
-    if (b.dataset.cat === 'all') return;
-    b.addEventListener('click', () => {
-      b.style.background = CAT_COLORS[b.dataset.cat];
-      b.style.color = '#0f172a';
-    });
+  // ── Simulation tick ───────────────────────────────────────────────────
+  sim.on('tick', () => {
+    linkSel
+      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
   });
 }
+
 
 /* ══════════════════════════════════════════════════════════════════════════
    LEGEND
 ══════════════════════════════════════════════════════════════════════════ */
 function buildLegend(data) {
-  const cats = [...new Set(data.pages.map(p => p.category))];
-  document.getElementById('cat-legend').innerHTML = cats.map(cat =>
-    `<span class="legend-item">
-       <span class="legend-dot" style="background:${CAT_COLORS[cat]}"></span>
-       ${cat}
-     </span>`).join('');
+  const cats  = [...new Set(data.pages.map(p => p.category))];
+  const roles = [...new Set(data.users.map(u => u.role))];
+  const catItems  = cats.map(c =>
+    `<span class="legend-item"><span class="legend-dot" style="background:${CAT_COLORS[c]}"></span>${c}</span>`
+  ).join('');
+  const roleItems = roles.map(r =>
+    `<span class="legend-item"><span class="legend-dot" style="background:${ROLE_COLORS[r]||'#94a3b8'};border:1px solid ${ROLE_COLORS[r]||'#94a3b8'}"></span>${r}</span>`
+  ).join('');
+  document.getElementById('cat-legend').innerHTML =
+    `<span style="font-size:.68rem;color:#64748b;font-weight:600;letter-spacing:.05em;margin-right:.3rem">CATEGORIES</span>${catItems}` +
+    `<span style="font-size:.68rem;color:#64748b;font-weight:600;letter-spacing:.05em;margin:.25rem .3rem 0 .6rem">ROLES</span>${roleItems}`;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
