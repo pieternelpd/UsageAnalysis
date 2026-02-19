@@ -1,0 +1,41 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - claude/iss-logs-analytics-9WTLM   # deploy directly from this feature branch too
+  workflow_dispatch:                        # allow manual trigger from Actions tab
+
+# Only one deploy can run at a time; cancel any in-progress run if a new one starts
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # needed to push to gh-pages branch
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Publish index.html + logs/ to the gh-pages branch.
+      # peaceiris/actions-gh-pages creates/updates the branch automatically.
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .          # deploy the repo root
+          publish_branch: gh-pages
+          exclude_assets: >-
+            .github/**,
+            generate_logs.py,
+            logs/iss_access.log   # skip the 4.5 MB raw log file
+          commit_message: "Deploy dashboard — ${{ github.sha }}"
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
