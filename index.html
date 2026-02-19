@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ISS Usage Analytics Dashboard</title>
+
+  <!-- D3 v7 for bubble/heatmap visualisations -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <!-- Chart.js v4 for bar / line / donut charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    /* ── Reset & Base ───────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:          #0f172a;
+      --surface:     #1e293b;
+      --surface2:    #263044;
+      --border:      #334155;
+      --text:        #e2e8f0;
+      --text-muted:  #94a3b8;
+      --accent:      #38bdf8;
+
+      --c-navigation: #818cf8;
+      --c-dashboard:  #38bdf8;
+      --c-reports:    #34d399;
+      --c-calendar:   #fbbf24;
+      --c-wiki:       #a78bfa;
+      --c-admin:      #f87171;
+      --c-help:       #f472b6;
+      --c-projects:   #2dd4bf;
+      --c-shared:     #fb923c;
+      --c-personal:   #a3e635;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header .logo {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, var(--accent), #818cf8);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; font-weight: 800; color: #0f172a;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
+    header span { font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem; }
+    .header-meta {
+      margin-left: auto;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-align: right;
+      line-height: 1.6;
+    }
+
+    /* ── Nav pills ──────────────────────────────────────────────────────── */
+    nav {
+      display: flex;
+      gap: 0.25rem;
+      padding: 0.75rem 2rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    nav a {
+      text-decoration: none;
+      padding: 0.35rem 0.9rem;
+      border-radius: 9999px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      white-space: nowrap;
+      transition: all .18s;
+    }
+    nav a:hover, nav a.active { background: var(--surface2); color: var(--text); }
+
+    /* ── Main layout ────────────────────────────────────────────────────── */
+    main { padding: 1.5rem 2rem 4rem; max-width: 1600px; margin: 0 auto; }
+    section { margin-bottom: 2.5rem; }
+    section h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    section h2::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Stat cards ─────────────────────────────────────────────────────── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.1rem 1.25rem;
+    }
+    .stat-card .label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+    .stat-card .value { font-size: 2rem; font-weight: 700; line-height: 1.2; margin-top: .2rem; }
+    .stat-card .sub   { font-size: 0.72rem; color: var(--text-muted); margin-top: .15rem; }
+    .stat-card.accent .value { color: var(--accent); }
+
+    /* ── Chart cards ────────────────────────────────────────────────────── */
+    .chart-grid { display: grid; gap: 1rem; }
+    .chart-grid.col2 { grid-template-columns: 1fr 1fr; }
+    .chart-grid.col3 { grid-template-columns: 2fr 1fr 1fr; }
+    @media (max-width: 1000px) {
+      .chart-grid.col2, .chart-grid.col3 { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      position: relative;
+    }
+    .card-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.25rem;
+    }
+    .card-sub {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+    .canvas-wrap { position: relative; }
+
+    /* ── D3 Bubble Matrix ────────────────────────────────────────────────── */
+    #bubble-matrix-container {
+      width: 100%;
+      overflow-x: auto;
+    }
+    #bubble-svg {
+      display: block;
+    }
+    .bubble-circle {
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .bubble-circle:hover { opacity: 0.75; stroke: #fff; stroke-width: 1.5px; }
+    .bubble-axis text { font-size: 11px; fill: var(--text-muted); }
+    .bubble-axis line, .bubble-axis path { stroke: var(--border); }
+    .bm-label { font-size: 11px; fill: var(--text); font-weight: 500; }
+    .bm-grid-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3,3; }
+
+    /* ── D3 Heatmap ─────────────────────────────────────────────────────── */
+    #heatmap-container { overflow-x: auto; }
+    .hm-cell { cursor: pointer; rx: 4; }
+    .hm-cell:hover { opacity: 0.8; }
+    .hm-text { font-size: 9px; fill: rgba(255,255,255,0.6); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+
+    /* ── Tooltip ────────────────────────────────────────────────────────── */
+    #tooltip {
+      position: fixed;
+      background: #1e293b;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      padding: .6rem .9rem;
+      font-size: 0.78rem;
+      color: var(--text);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .12s;
+      z-index: 999;
+      max-width: 240px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.4);
+    }
+    #tooltip.visible { opacity: 1; }
+    #tooltip strong { color: var(--accent); display: block; margin-bottom: .25rem; }
+
+    /* ── Category filter buttons ────────────────────────────────────────── */
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .4rem;
+      margin-bottom: 1rem;
+    }
+    .filter-btn {
+      padding: .25rem .7rem;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 500;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all .15s;
+      background: var(--surface2);
+      color: var(--text-muted);
+    }
+    .filter-btn.active, .filter-btn:hover {
+      color: #0f172a;
+      border-color: transparent;
+    }
+    .filter-btn[data-cat="all"].active { background: var(--text); }
+
+    /* ── Legend ─────────────────────────────────────────────────────────── */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+      margin-top: .75rem;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: .3rem;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+    .legend-dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Role badge ─────────────────────────────────────────────────────── */
+    .role-badge {
+      display: inline-block;
+      padding: .1rem .45rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .role-manager  { background: #1d4ed8; color: #bfdbfe; }
+    .role-admin    { background: #7f1d1d; color: #fecaca; }
+    .role-analyst  { background: #14532d; color: #bbf7d0; }
+    .role-developer{ background: #581c87; color: #e9d5ff; }
+    .role-support  { background: #78350f; color: #fde68a; }
+    .role-viewer   { background: #1e3a5f; color: #bae6fd; }
+
+    /* ── Page detail panel ───────────────────────────────────────────────── */
+    #drill-panel {
+      display: none;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-top: 1rem;
+    }
+    #drill-panel.visible { display: block; }
+    #drill-panel h3 { font-size: .85rem; font-weight: 600; margin-bottom: .75rem; }
+    #drill-close {
+      float: right;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    /* ── Scrollbar ───────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- Tooltip (shared) -->
+<div id="tooltip"></div>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">IS</div>
+  <h1>ISS Usage Analytics<span>30-day access log analysis</span></h1>
+  <div class="header-meta" id="header-meta">Loading…</div>
+</header>
+
+<!-- ── Nav ─────────────────────────────────────────────────────────────── -->
+<nav>
+  <a href="#overview"  class="active">Overview</a>
+  <a href="#bubble"    >Bubble Matrix</a>
+  <a href="#heatmap"   >Heatmap</a>
+  <a href="#traffic"   >Traffic Trends</a>
+  <a href="#pages"     >Top Pages</a>
+  <a href="#users"     >Users</a>
+  <a href="#breakdown" >Breakdown</a>
+</nav>
+
+<main>
+
+  <!-- ════ 1. OVERVIEW ════════════════════════════════════════════════════ -->
+  <section id="overview">
+    <h2>Overview</h2>
+    <div class="stat-grid" id="stat-grid">
+      <!-- filled by JS -->
+    </div>
+  </section>
+
+  <!-- ════ 2. BUBBLE MATRIX ═══════════════════════════════════════════════ -->
+  <section id="bubble">
+    <h2>User × Page Bubble Matrix</h2>
+    <div class="card">
+      <div class="card-title">Access frequency by user and page</div>
+      <div class="card-sub">Bubble size = number of requests · Colour = page category · Click a category to filter</div>
+
+      <div class="filter-bar" id="cat-filters">
+        <button class="filter-btn active" data-cat="all" onclick="filterBubbles('all')">All categories</button>
+      </div>
+
+      <div id="bubble-matrix-container">
+        <svg id="bubble-svg"></svg>
+      </div>
+
+      <!-- drill-down panel -->
+      <div id="drill-panel">
+        <button id="drill-close" onclick="closeDrill()">✕</button>
+        <h3 id="drill-title">Category detail</h3>
+        <svg id="drill-svg"></svg>
+      </div>
+
+      <div class="legend" id="cat-legend"></div>
+    </div>
+  </section>
+
+  <!-- ════ 3. HEATMAP ══════════════════════════════════════════════════════ -->
+  <section id="heatmap">
+    <h2>User × Category Heatmap</h2>
+    <div class="card">
+      <div class="card-title">Request intensity by user and page category</div>
+      <div class="card-sub">Darker = more requests · Hover for exact count</div>
+      <div id="heatmap-container">
+        <svg id="heatmap-svg"></svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ 4. TRAFFIC TRENDS ═══════════════════════════════════════════════ -->
+  <section id="traffic">
+    <h2>Traffic Trends</h2>
+    <div class="chart-grid col2">
+
+      <div class="card">
+        <div class="card-title">Daily request volume</div>
+        <div class="card-sub">Total HTTP requests per day · 30-day window</div>
+        <div class="canvas-wrap" style="height:220px">
+          <canvas id="dailyChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Hourly traffic pattern</div>
+        <div class="card-sub">Aggregate request distribution across hours of day</div>
+        <div class="canvas-wrap" style="height:220px">
+          <canvas id="hourlyChart"></canvas>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ════ 5. TOP PAGES ════════════════════════════════════════════════════ -->
+  <section id="pages">
+    <h2>Top Pages</h2>
+    <div class="card">
+      <div class="card-title">Top 20 most-visited pages</div>
+      <div class="card-sub">Total request count across all users · Colour = category</div>
+      <div class="canvas-wrap" style="height:460px">
+        <canvas id="topPagesChart"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ 6. USERS ════════════════════════════════════════════════════════ -->
+  <section id="users">
+    <h2>Users</h2>
+    <div class="chart-grid col2">
+
+      <div class="card">
+        <div class="card-title">User request volume</div>
+        <div class="card-sub">Total requests per user · sorted descending</div>
+        <div class="canvas-wrap" style="height:300px">
+          <canvas id="userChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">User profiles</div>
+        <div class="card-sub">Detailed stats per user</div>
+        <div id="user-table" style="overflow-x:auto;margin-top:.25rem"></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ════ 7. BREAKDOWN ════════════════════════════════════════════════════ -->
+  <section id="breakdown">
+    <h2>Breakdown</h2>
+    <div class="chart-grid col2">
+
+      <div class="card">
+        <div class="card-title">Page category distribution</div>
+        <div class="card-sub">Requests by category</div>
+        <div class="canvas-wrap" style="height:280px">
+          <canvas id="catDonut"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">HTTP status code distribution</div>
+        <div class="card-sub">Response status across all requests</div>
+        <div class="canvas-wrap" style="height:280px">
+          <canvas id="statusDonut"></canvas>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   CONFIG & COLOUR MAP
+══════════════════════════════════════════════════════════════════════════ */
+const CAT_COLORS = {
+  navigation: '#818cf8',
+  dashboard:  '#38bdf8',
+  reports:    '#34d399',
+  calendar:   '#fbbf24',
+  wiki:       '#a78bfa',
+  admin:      '#f87171',
+  help:       '#f472b6',
+  projects:   '#2dd4bf',
+  shared:     '#fb923c',
+  personal:   '#a3e635',
+};
+
+const STATUS_COLORS = {
+  '200': '#34d399',
+  '304': '#38bdf8',
+  '403': '#f87171',
+  '404': '#fbbf24',
+  '500': '#f472b6',
+};
+
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = '#334155';
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LOAD DATA
+══════════════════════════════════════════════════════════════════════════ */
+fetch('logs/usage_data.json')
+  .then(r => r.json())
+  .then(data => {
+    initAll(data);
+  })
+  .catch(err => {
+    document.body.innerHTML = `<div style="padding:2rem;color:#f87171">
+      <h2>Cannot load usage_data.json</h2>
+      <p>Serve this page from a local HTTP server, e.g.:<br>
+      <code>python3 -m http.server 8080</code></p>
+      <pre>${err}</pre></div>`;
+  });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TOOLTIP HELPERS
+══════════════════════════════════════════════════════════════════════════ */
+const tooltip = document.getElementById('tooltip');
+function showTip(event, html) {
+  tooltip.innerHTML = html;
+  tooltip.classList.add('visible');
+  moveTip(event);
+}
+function moveTip(event) {
+  const x = event.clientX + 14, y = event.clientY - 10;
+  tooltip.style.left = Math.min(x, window.innerWidth - 250) + 'px';
+  tooltip.style.top  = Math.min(y, window.innerHeight - 120) + 'px';
+}
+function hideTip() { tooltip.classList.remove('visible'); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   INIT ALL
+══════════════════════════════════════════════════════════════════════════ */
+function initAll(data) {
+  buildHeader(data);
+  buildStats(data);
+  buildBubbleMatrix(data);
+  buildHeatmap(data);
+  buildDailyChart(data);
+  buildHourlyChart(data);
+  buildTopPagesChart(data);
+  buildUserChart(data);
+  buildUserTable(data);
+  buildCatDonut(data);
+  buildStatusDonut(data);
+  buildCatFilters(data);
+  buildLegend(data);
+  initNavHighlight();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HEADER META
+══════════════════════════════════════════════════════════════════════════ */
+function buildHeader(data) {
+  const m = data.meta;
+  document.getElementById('header-meta').innerHTML =
+    `${m.date_range.start} – ${m.date_range.end}<br>Generated ${m.generated_at.slice(0,10)}`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   STAT CARDS
+══════════════════════════════════════════════════════════════════════════ */
+function buildStats(data) {
+  const m  = data.meta;
+  const topUser = [...data.users].sort((a,b) => b.total_requests - a.total_requests)[0];
+  const topPage = data.top_pages[0];
+  const totalBytes = data.users.reduce((s,u) => s + u.total_bytes, 0);
+
+  const cards = [
+    { label: 'Total Requests',  value: m.total_requests.toLocaleString(),  sub: `30-day window`, accent: true },
+    { label: 'Unique Users',    value: m.unique_users,                     sub: '10 active accounts' },
+    { label: 'Unique Pages',    value: m.unique_pages,                     sub: '10 categories' },
+    { label: 'Top User',        value: topUser.id,                         sub: `${topUser.total_requests.toLocaleString()} reqs` },
+    { label: 'Top Page',        value: topPage.page.replace('/',''),       sub: `${topPage.count.toLocaleString()} hits` },
+    { label: 'Data Transferred',value: fmtBytes(totalBytes),               sub: 'all users combined' },
+  ];
+
+  document.getElementById('stat-grid').innerHTML = cards.map(c => `
+    <div class="stat-card ${c.accent?'accent':''}">
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value}</div>
+      <div class="sub">${c.sub}</div>
+    </div>`).join('');
+}
+
+function fmtBytes(b) {
+  if (b > 1e9) return (b/1e9).toFixed(1) + ' GB';
+  if (b > 1e6) return (b/1e6).toFixed(1) + ' MB';
+  return (b/1e3).toFixed(0) + ' KB';
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BUBBLE MATRIX  (D3)
+   Y = users, X = pages (grouped by category), radius = requests
+══════════════════════════════════════════════════════════════════════════ */
+let currentCatFilter = 'all';
+let globalData = null;
+
+function buildBubbleMatrix(data) {
+  globalData = data;
+  renderBubbles(data, 'all');
+}
+
+function filterBubbles(cat) {
+  currentCatFilter = cat;
+  // update active button
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.cat === cat);
+  });
+  renderBubbles(globalData, cat);
+  closeDrill();
+}
+
+function renderBubbles(data, catFilter) {
+  const container = document.getElementById('bubble-matrix-container');
+  const svg       = d3.select('#bubble-svg');
+  svg.selectAll('*').remove();
+
+  const users = data.users.map(u => u.id);
+
+  // Filter pages
+  let pages = data.pages;
+  if (catFilter !== 'all') pages = pages.filter(p => p.category === catFilter);
+
+  // Sort pages: by category order then alphabetically
+  const CAT_ORDER = ['navigation','dashboard','reports','calendar','wiki','admin','help','projects','shared','personal'];
+  pages = [...pages].sort((a,b) => {
+    const ci = CAT_ORDER.indexOf(a.category) - CAT_ORDER.indexOf(b.category);
+    return ci !== 0 ? ci : a.path.localeCompare(b.path);
+  });
+
+  // Build lookup
+  const countMap = {};
+  data.bubble_matrix.forEach(b => { countMap[`${b.user}||${b.page}`] = b.count; });
+
+  const margin  = { top: 20, right: 20, bottom: 80, left: 90 };
+  const cellW   = Math.max(14, Math.min(28, Math.floor((container.clientWidth - margin.left - margin.right) / pages.length)));
+  const cellH   = 38;
+  const width   = pages.length * cellW + margin.left + margin.right;
+  const height  = users.length * cellH + margin.top  + margin.bottom;
+
+  svg.attr('width', width).attr('height', height);
+
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const xScale = d3.scaleBand().domain(pages.map(p=>p.path)).range([0, pages.length * cellW]).padding(0);
+  const yScale = d3.scaleBand().domain(users).range([0, users.length * cellH]).padding(0);
+
+  // Grid lines (horizontal)
+  users.forEach(u => {
+    g.append('line')
+      .attr('class','bm-grid-line')
+      .attr('x1',0).attr('x2', pages.length*cellW)
+      .attr('y1', yScale(u) + cellH/2)
+      .attr('y2', yScale(u) + cellH/2);
+  });
+
+  // Category dividers (vertical) – only in 'all' view
+  if (catFilter === 'all') {
+    let prevCat = null, xPos = 0;
+    pages.forEach((p,i) => {
+      if (p.category !== prevCat && i > 0) {
+        g.append('line').attr('class','bm-grid-line')
+          .attr('x1', xPos).attr('x2', xPos)
+          .attr('y1', -10).attr('y2', users.length*cellH + 10)
+          .attr('stroke', '#475569').attr('stroke-dasharray','none').attr('stroke-width',1);
+      }
+      prevCat  = p.category;
+      xPos    += cellW;
+    });
+  }
+
+  // Max count for radius scaling
+  const allCounts = [];
+  users.forEach(u => pages.forEach(p => {
+    const c = countMap[`${u}||${p.path}`] || 0;
+    if (c) allCounts.push(c);
+  }));
+  const maxCount = d3.max(allCounts) || 1;
+  const rScale   = d3.scaleSqrt().domain([0, maxCount]).range([0, cellW * 0.48]);
+
+  // Bubbles
+  users.forEach(u => {
+    pages.forEach(p => {
+      const count = countMap[`${u}||${p.path}`] || 0;
+      if (!count) return;
+      const cx = xScale(p.path) + cellW / 2;
+      const cy = yScale(u)      + cellH / 2;
+      const r  = rScale(count);
+      g.append('circle')
+        .attr('class','bubble-circle')
+        .attr('cx', cx).attr('cy', cy)
+        .attr('r', r)
+        .attr('fill', CAT_COLORS[p.category] || '#94a3b8')
+        .attr('opacity', 0.82)
+        .on('mousemove', (event) => showTip(event,
+          `<strong>${u} → ${p.path}</strong>
+           Requests: <b>${count.toLocaleString()}</b><br>
+           Category: ${p.category}`))
+        .on('mouseleave', hideTip)
+        .on('click', () => showDrill(data, p.category));
+    });
+  });
+
+  // X axis labels — show category name below each group or page path
+  if (catFilter === 'all') {
+    // Show category names centred over their group
+    const catGroups = d3.group(pages, p => p.category);
+    catGroups.forEach((pgs, cat) => {
+      const first = xScale(pgs[0].path);
+      const last  = xScale(pgs[pgs.length-1].path) + cellW;
+      const cx    = (first + last) / 2;
+      g.append('text')
+        .attr('x', cx).attr('y', users.length * cellH + 15)
+        .attr('text-anchor','middle')
+        .attr('font-size', 10)
+        .attr('fill', CAT_COLORS[cat] || '#94a3b8')
+        .attr('font-weight', 600)
+        .text(cat);
+    });
+  } else {
+    // Show page names (rotated)
+    g.selectAll('.x-label')
+      .data(pages)
+      .join('text')
+        .attr('class','x-label')
+        .attr('x', p => xScale(p.path) + cellW/2)
+        .attr('y', users.length * cellH + 6)
+        .attr('text-anchor','end')
+        .attr('font-size', 9)
+        .attr('fill','#94a3b8')
+        .attr('transform', p => `rotate(-45, ${xScale(p.path)+cellW/2}, ${users.length*cellH+6})`)
+        .text(p => p.path.replace('/users/','').replace('/projects/',''));
+  }
+
+  // Y axis (user names)
+  g.selectAll('.y-label')
+    .data(users)
+    .join('text')
+      .attr('class','bm-label')
+      .attr('x', -8)
+      .attr('y', u => yScale(u) + cellH/2)
+      .attr('text-anchor','end')
+      .attr('dominant-baseline','central')
+      .attr('font-size', 11)
+      .text(u => u);
+}
+
+/* ── Drill-down: show individual pages in a category ───────────────────── */
+function showDrill(data, cat) {
+  const panel = document.getElementById('drill-panel');
+  panel.classList.add('visible');
+  document.getElementById('drill-title').textContent = `Category: ${cat}`;
+
+  const svg     = d3.select('#drill-svg');
+  svg.selectAll('*').remove();
+
+  const users   = data.users.map(u => u.id);
+  const pages   = data.pages.filter(p => p.category === cat)
+                             .sort((a,b) => a.path.localeCompare(b.path));
+  const countMap = {};
+  data.bubble_matrix.forEach(b => { countMap[`${b.user}||${b.page}`] = b.count; });
+
+  const cellW   = 60, cellH = 36;
+  const margin  = { top: 10, right: 20, bottom: 90, left: 90 };
+  const width   = pages.length * cellW + margin.left + margin.right;
+  const height  = users.length * cellH + margin.top  + margin.bottom;
+
+  svg.attr('width', Math.max(width, 500)).attr('height', height);
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const allCounts = [];
+  users.forEach(u => pages.forEach(p => {
+    const c = countMap[`${u}||${p.path}`] || 0;
+    if (c) allCounts.push(c);
+  }));
+  const rScale = d3.scaleSqrt().domain([0, d3.max(allCounts)||1]).range([0, cellW*0.46]);
+  const color  = CAT_COLORS[cat] || '#94a3b8';
+
+  users.forEach(u => {
+    pages.forEach(p => {
+      const count = countMap[`${u}||${p.path}`] || 0;
+      if (!count) return;
+      const cx = pages.indexOf(p) * cellW + cellW/2;
+      const cy = users.indexOf(u) * cellH + cellH/2;
+      g.append('circle')
+        .attr('cx', cx).attr('cy', cy).attr('r', rScale(count))
+        .attr('fill', color).attr('opacity', 0.8)
+        .on('mousemove', ev => showTip(ev,
+          `<strong>${u} → ${p.path}</strong>Requests: <b>${count.toLocaleString()}</b>`))
+        .on('mouseleave', hideTip);
+    });
+  });
+
+  // X labels
+  g.selectAll('.x-lab').data(pages).join('text')
+    .attr('class','x-lab')
+    .attr('x', (p,i) => i*cellW + cellW/2).attr('y', users.length*cellH+8)
+    .attr('text-anchor','end').attr('font-size',9).attr('fill','#94a3b8')
+    .attr('transform',(p,i)=>`rotate(-45,${i*cellW+cellW/2},${users.length*cellH+8})`)
+    .text(p => p.path.split('/').slice(-1)[0]);
+
+  // Y labels
+  g.selectAll('.y-lab').data(users).join('text')
+    .attr('class','y-lab')
+    .attr('x',-8).attr('y',(u,i)=>i*cellH+cellH/2)
+    .attr('text-anchor','end').attr('dominant-baseline','central')
+    .attr('font-size',11).attr('fill',color).attr('font-weight',600)
+    .text(u=>u);
+}
+function closeDrill() {
+  document.getElementById('drill-panel').classList.remove('visible');
+  d3.select('#drill-svg').selectAll('*').remove();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CATEGORY FILTER BUTTONS
+══════════════════════════════════════════════════════════════════════════ */
+function buildCatFilters(data) {
+  const cats    = [...new Set(data.pages.map(p => p.category))];
+  const bar     = document.getElementById('cat-filters');
+  cats.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.className  = 'filter-btn';
+    btn.dataset.cat = cat;
+    btn.textContent = cat;
+    btn.style.cssText = `background:${CAT_COLORS[cat]}22;border-color:${CAT_COLORS[cat]}55;color:${CAT_COLORS[cat]}`;
+    btn.onclick = () => filterBubbles(cat);
+    bar.appendChild(btn);
+  });
+  // style the active color for click
+  document.querySelectorAll('.filter-btn[data-cat!="all"]').forEach(b => {
+    b.addEventListener('click', () => {
+      b.style.background = CAT_COLORS[b.dataset.cat];
+      b.style.color = '#0f172a';
+    });
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LEGEND
+══════════════════════════════════════════════════════════════════════════ */
+function buildLegend(data) {
+  const cats = [...new Set(data.pages.map(p => p.category))];
+  document.getElementById('cat-legend').innerHTML = cats.map(cat =>
+    `<span class="legend-item">
+       <span class="legend-dot" style="background:${CAT_COLORS[cat]}"></span>
+       ${cat}
+     </span>`).join('');
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HEATMAP  (D3) — user × category
+══════════════════════════════════════════════════════════════════════════ */
+function buildHeatmap(data) {
+  const users = data.users.map(u => u.id);
+  const cats  = Object.keys(CAT_COLORS);
+
+  // Aggregate counts
+  const pagesCat = {};
+  data.pages.forEach(p => { pagesCat[p.path] = p.category; });
+  const matrix = {};
+  data.bubble_matrix.forEach(b => {
+    const cat = pagesCat[b.page];
+    if (!cat) return;
+    const key = `${b.user}||${cat}`;
+    matrix[key] = (matrix[key] || 0) + b.count;
+  });
+
+  const allVals = Object.values(matrix);
+  const maxVal  = d3.max(allVals) || 1;
+
+  const margin  = { top: 10, right: 20, bottom: 60, left: 90 };
+  const cellW   = 72, cellH = 38;
+  const width   = cats.length  * cellW + margin.left + margin.right;
+  const height  = users.length * cellH + margin.top  + margin.bottom;
+
+  const svg = d3.select('#heatmap-svg')
+    .attr('width', width).attr('height', height);
+  const g   = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // Cells
+  users.forEach((u, ui) => {
+    cats.forEach((cat, ci) => {
+      const val  = matrix[`${u}||${cat}`] || 0;
+      const norm = val / maxVal;
+      const fill = d3.interpolate('#1e293b', CAT_COLORS[cat])(Math.pow(norm, 0.5));
+
+      g.append('rect')
+        .attr('class','hm-cell')
+        .attr('x', ci*cellW + 2).attr('y', ui*cellH + 2)
+        .attr('width', cellW-4).attr('height', cellH-4)
+        .attr('rx', 5)
+        .attr('fill', fill)
+        .on('mousemove', ev => showTip(ev,
+          `<strong>${u} → ${cat}</strong>Requests: <b>${val.toLocaleString()}</b><br>
+           ${((val/data.users.find(usr=>usr.id===u).total_requests)*100).toFixed(1)}% of user's total`))
+        .on('mouseleave', hideTip);
+
+      if (val > 0) {
+        g.append('text')
+          .attr('class','hm-text')
+          .attr('x', ci*cellW + cellW/2).attr('y', ui*cellH + cellH/2)
+          .text(val >= 1000 ? (val/1000).toFixed(1)+'k' : val)
+          .attr('fill', norm > 0.5 ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.5)');
+      }
+    });
+  });
+
+  // X axis (category names)
+  cats.forEach((cat,ci) => {
+    g.append('text')
+      .attr('x', ci*cellW + cellW/2).attr('y', users.length*cellH + 15)
+      .attr('text-anchor','middle').attr('font-size',10)
+      .attr('fill', CAT_COLORS[cat]).attr('font-weight',600)
+      .text(cat);
+  });
+
+  // Y axis (user names)
+  users.forEach((u,ui) => {
+    g.append('text')
+      .attr('x',-8).attr('y', ui*cellH + cellH/2)
+      .attr('text-anchor','end').attr('dominant-baseline','central')
+      .attr('font-size',11).attr('fill','#e2e8f0').attr('font-weight',500)
+      .text(u);
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DAILY CHART  (Chart.js)
+══════════════════════════════════════════════════════════════════════════ */
+function buildDailyChart(data) {
+  const labels = data.daily_series.map(d => d.date.slice(5));  // MM-DD
+  const counts = data.daily_series.map(d => d.count);
+  new Chart(document.getElementById('dailyChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Requests',
+        data: counts,
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(56,189,248,0.12)',
+        tension: 0.35,
+        fill: true,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: '#1e293b' }, ticks: { maxRotation: 45, font: {size:10} } },
+        y: { grid: { color: '#334155' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HOURLY CHART  (Chart.js)
+══════════════════════════════════════════════════════════════════════════ */
+function buildHourlyChart(data) {
+  const labels = data.hourly_series.map(h => `${String(h.hour).padStart(2,'0')}:00`);
+  const counts = data.hourly_series.map(h => h.count);
+  new Chart(document.getElementById('hourlyChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Requests',
+        data: counts,
+        backgroundColor: counts.map((_,i) => (i>=8 && i<18) ? 'rgba(56,189,248,0.7)' : 'rgba(56,189,248,0.2)'),
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.raw.toLocaleString()} requests`
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: '#1e293b' }, ticks: { font:{size:9}, maxRotation: 45 } },
+        y: { grid: { color: '#334155' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TOP PAGES BAR CHART  (Chart.js)
+══════════════════════════════════════════════════════════════════════════ */
+function buildTopPagesChart(data) {
+  const pagesCat = {};
+  data.pages.forEach(p => { pagesCat[p.path] = p.category; });
+
+  const sorted = [...data.top_pages].sort((a,b) => b.count - a.count);
+  const labels = sorted.map(p => p.page);
+  const counts = sorted.map(p => p.count);
+  const colors = sorted.map(p => CAT_COLORS[pagesCat[p.page]] || '#94a3b8');
+
+  new Chart(document.getElementById('topPagesChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Requests',
+        data: counts,
+        backgroundColor: colors.map(c => c + 'cc'),
+        borderColor: colors,
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.raw.toLocaleString()} requests`
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: '#334155' }, beginAtZero: true },
+        y: { grid: { display: false }, ticks: { font:{size:10} } }
+      }
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   USER CHART  (Chart.js)
+══════════════════════════════════════════════════════════════════════════ */
+function buildUserChart(data) {
+  const sorted = [...data.users].sort((a,b) => b.total_requests - a.total_requests);
+  const gradient = ['#38bdf8','#34d399','#a78bfa','#fbbf24','#f472b6','#2dd4bf','#fb923c','#818cf8','#a3e635','#f87171'];
+
+  new Chart(document.getElementById('userChart'), {
+    type: 'bar',
+    data: {
+      labels: sorted.map(u => u.id),
+      datasets: [{
+        label: 'Total Requests',
+        data: sorted.map(u => u.total_requests),
+        backgroundColor: gradient.map(c => c + 'bb'),
+        borderColor: gradient,
+        borderWidth: 1,
+        borderRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false } },
+        y: { grid: { color: '#334155' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   USER TABLE
+══════════════════════════════════════════════════════════════════════════ */
+function buildUserTable(data) {
+  const sorted = [...data.users].sort((a,b) => b.total_requests - a.total_requests);
+  const rows = sorted.map((u,i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td style="font-weight:600;color:#e2e8f0">${u.id}</td>
+      <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+      <td style="text-align:right">${u.total_requests.toLocaleString()}</td>
+      <td style="text-align:right">${fmtBytes(u.total_bytes)}</td>
+      <td style="text-align:right">${u.avg_response_ms} ms</td>
+    </tr>`).join('');
+
+  document.getElementById('user-table').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+      <thead>
+        <tr style="color:#94a3b8;border-bottom:1px solid #334155">
+          <th style="padding:.4rem .5rem;text-align:left">#</th>
+          <th style="padding:.4rem .5rem;text-align:left">User</th>
+          <th style="padding:.4rem .5rem;text-align:left">Role</th>
+          <th style="padding:.4rem .5rem;text-align:right">Requests</th>
+          <th style="padding:.4rem .5rem;text-align:right">Data</th>
+          <th style="padding:.4rem .5rem;text-align:right">Avg Resp.</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  // Stripe rows
+  document.querySelectorAll('#user-table tbody tr').forEach((tr,i) => {
+    tr.style.background = i%2 ? '#1e293b' : 'transparent';
+  });
+  document.querySelectorAll('#user-table td').forEach(td => {
+    td.style.padding = '.4rem .5rem';
+    td.style.borderBottom = '1px solid #263044';
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CATEGORY DONUT  (Chart.js)
+══════════════════════════════════════════════════════════════════════════ */
+function buildCatDonut(data) {
+  const cats   = Object.keys(data.category_totals);
+  const counts = cats.map(c => data.category_totals[c]);
+  const colors = cats.map(c => CAT_COLORS[c] || '#94a3b8');
+
+  new Chart(document.getElementById('catDonut'), {
+    type: 'doughnut',
+    data: {
+      labels: cats,
+      datasets: [{
+        data: counts,
+        backgroundColor: colors.map(c => c+'cc'),
+        borderColor: colors,
+        borderWidth: 1,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { font:{size:10}, padding:10, usePointStyle:true }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.label}: ${ctx.raw.toLocaleString()} (${((ctx.raw/ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0))*100).toFixed(1)}%)`
+          }
+        }
+      }
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   STATUS DONUT  (Chart.js)
+══════════════════════════════════════════════════════════════════════════ */
+function buildStatusDonut(data) {
+  const statuses = Object.keys(data.status_codes).sort();
+  const counts   = statuses.map(s => data.status_codes[s]);
+  const colors   = statuses.map(s => STATUS_COLORS[s] || '#94a3b8');
+  const labels   = {
+    '200': '200 OK', '304': '304 Not Modified',
+    '403': '403 Forbidden', '404': '404 Not Found', '500': '500 Server Error'
+  };
+
+  new Chart(document.getElementById('statusDonut'), {
+    type: 'doughnut',
+    data: {
+      labels: statuses.map(s => labels[s] || s),
+      datasets: [{
+        data: counts,
+        backgroundColor: colors.map(c => c+'cc'),
+        borderColor: colors,
+        borderWidth: 1,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { font:{size:10}, padding:10, usePointStyle:true }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.label}: ${ctx.raw.toLocaleString()} (${((ctx.raw/counts.reduce((a,b)=>a+b,0))*100).toFixed(1)}%)`
+          }
+        }
+      }
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   NAV HIGHLIGHT ON SCROLL
+══════════════════════════════════════════════════════════════════════════ */
+function initNavHighlight() {
+  const sections = document.querySelectorAll('section[id]');
+  const links    = document.querySelectorAll('nav a');
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#'+e.target.id));
+      }
+    });
+  }, { rootMargin: '-40% 0px -55% 0px' });
+  sections.forEach(s => obs.observe(s));
+}
+</script>
+</body>
+</html>
