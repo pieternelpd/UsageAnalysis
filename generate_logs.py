@@ -323,6 +323,47 @@ def _pairs_to_list(d):
 transitions_list      = _pairs_to_list(trans_all)
 user_transitions_dict = {uid: _pairs_to_list(d) for uid, d in trans_user.items()}
 
+# ── Page-level 5-step flow (top 20 pages bucketed, sliding windows) ───────────
+_TOP20_PAGES  = {p for p, _ in sorted(page_totals.items(), key=lambda x: -x[1])[:20]}
+_NUM_STEPS    = 5
+
+def _bucket_pg(p):
+    return p if p in _TOP20_PAGES else '(other)'
+
+def _dedup_consec(seq):
+    """Remove consecutive duplicate values (e.g. page refreshes)."""
+    return [v for i, v in enumerate(seq) if i == 0 or v != seq[i - 1]]
+
+# Group per-user page paths in chronological order
+user_visit_pages = defaultdict(list)
+for e in log_entries:
+    user_visit_pages[e["username"]].append(e["path"])
+
+# step_all[k]  : (from_page, to_page) -> count  for transition k→k+1 (all users)
+# step_user[u][k]: same, per user
+step_all  = [defaultdict(int) for _ in range(_NUM_STEPS - 1)]
+step_user = defaultdict(lambda: [defaultdict(int) for _ in range(_NUM_STEPS - 1)])
+
+for uid, pages in user_visit_pages.items():
+    bucketed = [_bucket_pg(p) for p in _dedup_consec(pages)]
+    for start in range(len(bucketed) - _NUM_STEPS + 1):
+        window = bucketed[start:start + _NUM_STEPS]
+        for k in range(_NUM_STEPS - 1):
+            pair = (window[k], window[k + 1])
+            step_all[k][pair]      += 1
+            step_user[uid][k][pair] += 1
+
+def _step_trans_to_list(trans_list, min_count=1):
+    return [
+        [{"from": f, "to": t, "count": c}
+         for (f, t), c in sorted(d.items(), key=lambda x: -x[1]) if c >= min_count]
+        for d in trans_list
+    ]
+
+page_flow_data      = _step_trans_to_list(step_all)                           # all users
+user_page_flow_data = {uid: _step_trans_to_list(d, min_count=3)               # per user
+                       for uid, d in step_user.items()}
+
 # Top pages per user
 user_top_pages = {}
 for uid, pages in matrix.items():
@@ -381,6 +422,8 @@ usage_data = {
     "status_codes": dict(status_counts),
     "transitions": transitions_list,
     "user_transitions": user_transitions_dict,
+    "page_flow": page_flow_data,
+    "user_page_flow": user_page_flow_data,
 }
 
 with open("logs/usage_data.json", "w") as f:
