@@ -299,6 +299,30 @@ for e in log_entries:
     page_bytes[e["path"]]         += e["bytes"]
     user_avg_time[e["username"]].append(e["time_taken"])
 
+# ── Category-to-category transition counts ────────────────────────────────────
+# Group each user's page visits chronologically, then walk consecutive pairs.
+# Only cross-category transitions are counted (same-category pairs skipped).
+user_visit_cats = defaultdict(list)
+for e in log_entries:                        # log_entries already sorted by timestamp
+    user_visit_cats[e["username"]].append(e["category"])
+
+trans_all  = defaultdict(int)               # (src_cat, dst_cat) -> count  (all users)
+trans_user = defaultdict(lambda: defaultdict(int))  # uid -> (src_cat, dst_cat) -> count
+
+for uid, cats in user_visit_cats.items():
+    for i in range(len(cats) - 1):
+        src, dst = cats[i], cats[i + 1]
+        if src != dst:                       # skip same-category self-loops
+            trans_all[(src, dst)]      += 1
+            trans_user[uid][(src, dst)] += 1
+
+def _pairs_to_list(d):
+    return [{"source": s, "target": t, "value": v}
+            for (s, t), v in sorted(d.items(), key=lambda x: -x[1])]
+
+transitions_list      = _pairs_to_list(trans_all)
+user_transitions_dict = {uid: _pairs_to_list(d) for uid, d in trans_user.items()}
+
 # Top pages per user
 user_top_pages = {}
 for uid, pages in matrix.items():
@@ -355,6 +379,8 @@ usage_data = {
     "daily_series": daily_series,
     "hourly_series": hourly_series,
     "status_codes": dict(status_counts),
+    "transitions": transitions_list,
+    "user_transitions": user_transitions_dict,
 }
 
 with open("logs/usage_data.json", "w") as f:
