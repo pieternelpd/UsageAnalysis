@@ -3,7 +3,7 @@
 Generates dummy IIS-style (W3C Extended Log Format) access logs for
 10 users accessing 100 pages over 30 days, with realistic usage patterns.
 Outputs:
-  logs/iss_access.log  - Raw IIS W3C log file
+  logs/iis_access.log  - Raw IIS W3C log file
   logs/usage_data.json - Pre-aggregated JSON for the dashboard
 """
 
@@ -257,7 +257,7 @@ print(f"Generated {len(log_entries):,} log entries")
 # ── Write W3C IIS log file ─────────────────────────────────────────────────────
 os.makedirs("logs", exist_ok=True)
 
-with open("logs/iss_access.log", "w") as f:
+with open("logs/iis_access.log", "w") as f:
     f.write("#Software: Microsoft Internet Information Services 10.0\n")
     f.write("#Version: 1.0\n")
     f.write(f"#Date: {START_DATE.strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -270,7 +270,7 @@ with open("logs/iss_access.log", "w") as f:
             f"{e['substatus']} {e['win32']} {e['time_taken']}\n"
         )
 
-print("Written logs/iss_access.log")
+print("Written logs/iis_access.log")
 
 # ── Aggregate data for dashboard ───────────────────────────────────────────────
 from collections import defaultdict
