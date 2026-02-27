@@ -131,6 +131,8 @@
     .stat-card .value { font-size: 2rem; font-weight: 700; line-height: 1.2; margin-top: .2rem; }
     .stat-card .sub   { font-size: 0.72rem; color: var(--text-muted); margin-top: .15rem; }
     .stat-card.accent .value { color: var(--accent); }
+    .stat-card.wide   { grid-column: span 2; }
+    .stat-card.wide .value { font-size: 0.95rem; word-break: break-all; line-height: 1.5; }
 
     /* ── Chart cards ────────────────────────────────────────────────────── */
     .chart-grid { display: grid; gap: 1rem; }
@@ -563,15 +565,14 @@ function buildStats(data) {
 
   const cards = [
     { label: 'Total Requests',  value: m.total_requests.toLocaleString(),  sub: `30-day window`, accent: true },
-    { label: 'Unique Users',    value: m.unique_users,                     sub: '10 active accounts' },
-    { label: 'Unique Pages',    value: m.unique_pages,                     sub: '10 categories' },
+    { label: 'Unique Users',    value: m.unique_users,                     sub: `active accounts` },
+    { label: 'Unique Pages',    value: m.unique_pages,                     sub: `across all categories` },
     { label: 'Top User',        value: topUser.id,                         sub: `${topUser.total_requests.toLocaleString()} reqs` },
-    { label: 'Top Page',        value: topPage.page.replace('/',''),       sub: `${topPage.count.toLocaleString()} hits` },
-    { label: 'Data Transferred',value: fmtBytes(totalBytes),               sub: 'all users combined' },
+    { label: 'Top Page',        value: topPage.page,                       sub: `${topPage.count.toLocaleString()} hits`, wide: true },
   ];
 
   document.getElementById('stat-grid').innerHTML = cards.map(c => `
-    <div class="stat-card ${c.accent?'accent':''}">
+    <div class="stat-card ${c.accent?'accent':''} ${c.wide?'wide':''}">
       <div class="label">${c.label}</div>
       <div class="value">${c.value}</div>
       <div class="sub">${c.sub}</div>
