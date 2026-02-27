@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Parses real IIS W3C log files from logs/u_ex*.log and produces:
+Parses real IIS W3C log files from logs/*_structure_obfuscated.log and produces:
   logs/usage_data.json  – pre-aggregated JSON for the dashboard
 """
 
@@ -24,20 +24,13 @@ def categorise(path):
         except (StopIteration, IndexError):
             return 'Display'
     if '/visualizations' in p:
-        fname = path.split('/')[-1].lower()
-        if 'trend'         in fname: return 'Trends'
-        if 'achart'        in fname: return 'Charts'
-        if 'atable'        in fname: return 'Tables'
-        if 'table'         in fname: return 'Tables'
-        if 'external'      in fname: return 'External'
-        if 'graphicviewer' in fname: return 'Graphics'
         return 'Visualization'
     if 'atcplus' in p:
         return 'ATCPlus'
     return 'Other'
 
 # ── Parse all log files ────────────────────────────────────────────────────────
-LOG_GLOB = os.path.join(os.path.dirname(__file__), 'logs', 'u_ex*.log')
+LOG_GLOB = os.path.join(os.path.dirname(__file__), 'logs', '*_structure_obfuscated.log')
 log_files = sorted(glob.glob(LOG_GLOB))
 
 if not log_files:
@@ -55,12 +48,12 @@ for fpath in log_files:
             line = raw.strip()
             if not line:
                 continue
-            if line.startswith('#Fields:'):
-                # Parse field names from header
-                names = line[len('#Fields:'):].strip().split()
-                field_map = {n: i for i, n in enumerate(names)}
-                continue
             if line.startswith('#'):
+                # Handle both split and combined headers (e.g. "#Software:...#Fields: ...")
+                if '#Fields:' in line:
+                    fields_part = line[line.index('#Fields:') + len('#Fields:'):]
+                    names = fields_part.strip().split()
+                    field_map = {n: i for i, n in enumerate(names)}
                 continue
             if field_map is None:
                 continue  # skip data lines before we have a field map
