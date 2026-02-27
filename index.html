@@ -547,6 +547,8 @@ function initAll(data) {
     runN(buildHeatmap,        'buildHeatmap',        n);
     runN(buildUserChart,      'buildUserChart',      n);
     buildUserTable(data, n);
+    runN(buildNavFlow,        'buildNavFlow',        n);
+    runN(buildPageFlow,       'buildPageFlow',       n);
   };
 
   slider.addEventListener('input', () => {
@@ -560,8 +562,6 @@ function initAll(data) {
   run(buildTopPagesChart, 'buildTopPagesChart');
   run(buildCatDonut,      'buildCatDonut');
   run(buildStatusDonut,   'buildStatusDonut');
-  run(buildNavFlow,       'buildNavFlow');
-  run(buildPageFlow,      'buildPageFlow');
   buildLegend(data);
   initNavHighlight();
 }
@@ -1141,10 +1141,14 @@ function buildStatusDonut(data) {
    Split-node layout: left column = source categories, right = destinations.
    Edge width proportional to cross-category transition count.
 ══════════════════════════════════════════════════════════════════════════ */
-function buildNavFlow(data) {
+function buildNavFlow(data, topN = 50) {
   if (typeof d3.sankey === 'undefined') {
     console.warn('buildNavFlow: d3-sankey not loaded'); return;
   }
+
+  const topUsers = [...data.users]
+    .sort((a, b) => b.total_requests - a.total_requests)
+    .slice(0, topN);
 
   const container = document.getElementById('sankey-container');
   const W = Math.max(container.clientWidth || 800, 620);
@@ -1153,6 +1157,7 @@ function buildNavFlow(data) {
 
   // ── Filter bar ────────────────────────────────────────────────────────
   const filterBar = document.getElementById('sankey-filter-bar');
+  filterBar.innerHTML = '';
 
   const allBtn = document.createElement('button');
   allBtn.className = 'filter-btn active';
@@ -1161,7 +1166,7 @@ function buildNavFlow(data) {
   allBtn.style.cssText = 'background:var(--text);color:#0f172a';
   filterBar.appendChild(allBtn);
 
-  data.users.forEach(u => {
+  topUsers.forEach(u => {
     const btn = document.createElement('button');
     btn.className = 'filter-btn';
     btn.dataset.user = u.id;
@@ -1326,10 +1331,14 @@ function buildNavFlow(data) {
    Each column is a step position; the same page node can appear in multiple
    columns because node IDs encode both step and page path.
 ══════════════════════════════════════════════════════════════════════════ */
-function buildPageFlow(data) {
+function buildPageFlow(data, topN = 50) {
   if (typeof d3.sankey === 'undefined') {
     console.warn('buildPageFlow: d3-sankey not loaded'); return;
   }
+
+  const topUsers = [...data.users]
+    .sort((a, b) => b.total_requests - a.total_requests)
+    .slice(0, topN);
 
   // page → category lookup
   const pageCat = {};
@@ -1342,6 +1351,7 @@ function buildPageFlow(data) {
 
   // ── Filter bar ──────────────────────────────────────────────────────────
   const filterBar = document.getElementById('pageflow-filter-bar');
+  filterBar.innerHTML = '';
 
   const allBtn = document.createElement('button');
   allBtn.className = 'filter-btn active';
@@ -1350,7 +1360,7 @@ function buildPageFlow(data) {
   allBtn.style.cssText = 'background:var(--text);color:#0f172a';
   filterBar.appendChild(allBtn);
 
-  data.users.forEach(u => {
+  topUsers.forEach(u => {
     const btn = document.createElement('button');
     btn.className = 'filter-btn';
     btn.dataset.user = u.id;
