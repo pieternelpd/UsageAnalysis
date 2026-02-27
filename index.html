@@ -313,18 +313,19 @@
     </div>
   </section>
 
+  <!-- ── Global top-N user filter ───────────────────────────────────── -->
+  <div style="display:flex;align-items:center;gap:0.75rem;margin:0 0 1.25rem;">
+    <label for="top-user-count" style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">Top users shown across all views:</label>
+    <input type="range" id="top-user-count" min="5" max="100" value="50" step="5" style="flex:1;max-width:240px;accent-color:var(--accent);">
+    <span id="top-user-count-label" style="font-size:0.75rem;color:var(--text-muted);min-width:2rem;">50</span>
+  </div>
+
   <!-- ════ 2. KNOWLEDGE GRAPH ════════════════════════════════════════════ -->
   <section id="bubble">
     <h2>User–Category Knowledge Graph</h2>
     <div class="card">
       <div class="card-title">Access relationships between users and page categories</div>
       <div class="card-sub">Node size = total requests · Edge thickness = request flow · Drag nodes · Scroll to zoom · Hover to highlight</div>
-
-      <div style="margin: 0.75rem 0 0.5rem; display: flex; align-items: center; gap: 0.75rem;">
-        <label for="kg-user-count" style="font-size:0.75rem; color: var(--text-muted); white-space: nowrap;">Top users shown:</label>
-        <input type="range" id="kg-user-count" min="5" max="100" value="50" step="5" style="flex:1; max-width:220px; accent-color: var(--accent);">
-        <span id="kg-user-count-label" style="font-size:0.75rem; color: var(--text-muted); min-width: 2rem;">50</span>
-      </div>
 
       <div id="kg-container">
         <svg id="kg-svg"></svg>
@@ -535,20 +536,28 @@ function initAll(data) {
   buildHeader(data);
   buildStats(data);
   // Each chart is isolated — a failure in one never blocks the others
-  const run = (fn, label) => { try { fn(data); } catch(e) { console.error(label + ':', e); } };
-  run(buildKnowledgeGraph,'buildKnowledgeGraph');
-  const kgSlider = document.getElementById('kg-user-count');
-  const kgLabel  = document.getElementById('kg-user-count-label');
-  kgSlider.addEventListener('input', () => {
-    kgLabel.textContent = kgSlider.value;
-    try { buildKnowledgeGraph(data, +kgSlider.value); } catch(e) { console.error('buildKnowledgeGraph:', e); }
+  const run  = (fn, label)     => { try { fn(data);     } catch(e) { console.error(label + ':', e); } };
+  const runN = (fn, label, n)  => { try { fn(data, n);  } catch(e) { console.error(label + ':', e); } };
+
+  const slider = document.getElementById('top-user-count');
+  const sliderLabel = document.getElementById('top-user-count-label');
+
+  const redrawUserViews = n => {
+    runN(buildKnowledgeGraph, 'buildKnowledgeGraph', n);
+    runN(buildHeatmap,        'buildHeatmap',        n);
+    runN(buildUserChart,      'buildUserChart',      n);
+    buildUserTable(data, n);
+  };
+
+  slider.addEventListener('input', () => {
+    sliderLabel.textContent = slider.value;
+    redrawUserViews(+slider.value);
   });
-  run(buildHeatmap,       'buildHeatmap');
+
+  redrawUserViews(50);
   run(buildDailyChart,    'buildDailyChart');
   run(buildHourlyChart,   'buildHourlyChart');
   run(buildTopPagesChart, 'buildTopPagesChart');
-  run(buildUserChart,     'buildUserChart');
-  buildUserTable(data);
   run(buildCatDonut,      'buildCatDonut');
   run(buildStatusDonut,   'buildStatusDonut');
   run(buildNavFlow,       'buildNavFlow');
@@ -784,8 +793,13 @@ function buildLegend(data) {
 /* ══════════════════════════════════════════════════════════════════════════
    HEATMAP  (D3) — user × category
 ══════════════════════════════════════════════════════════════════════════ */
-function buildHeatmap(data) {
-  const users = data.users.map(u => u.id);
+function buildHeatmap(data, topN = 50) {
+  const users = [...data.users]
+    .sort((a, b) => b.total_requests - a.total_requests)
+    .slice(0, topN)
+    .map(u => u.id);
+
+  d3.select('#heatmap-svg').selectAll('*').remove();
   const cats  = Object.keys(CAT_COLORS);
 
   // Aggregate counts
@@ -972,8 +986,10 @@ function buildTopPagesChart(data) {
 /* ══════════════════════════════════════════════════════════════════════════
    USER CHART  (Chart.js)
 ══════════════════════════════════════════════════════════════════════════ */
-function buildUserChart(data) {
-  const sorted = [...data.users].sort((a,b) => b.total_requests - a.total_requests);
+function buildUserChart(data, topN = 50) {
+  const existing = Chart.getChart(document.getElementById('userChart'));
+  if (existing) existing.destroy();
+  const sorted = [...data.users].sort((a,b) => b.total_requests - a.total_requests).slice(0, topN);
   const gradient = ['#38bdf8','#34d399','#a78bfa','#fbbf24','#f472b6','#2dd4bf','#fb923c','#818cf8','#a3e635','#f87171'];
 
   new Chart(document.getElementById('userChart'), {
@@ -1003,8 +1019,8 @@ function buildUserChart(data) {
 /* ══════════════════════════════════════════════════════════════════════════
    USER TABLE
 ══════════════════════════════════════════════════════════════════════════ */
-function buildUserTable(data) {
-  const sorted = [...data.users].sort((a,b) => b.total_requests - a.total_requests);
+function buildUserTable(data, topN = 50) {
+  const sorted = [...data.users].sort((a,b) => b.total_requests - a.total_requests).slice(0, topN);
   const rows = sorted.map((u,i) => `
     <tr>
       <td>${i+1}</td>
