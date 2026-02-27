@@ -320,6 +320,12 @@
       <div class="card-title">Access relationships between users and page categories</div>
       <div class="card-sub">Node size = total requests · Edge thickness = request flow · Drag nodes · Scroll to zoom · Hover to highlight</div>
 
+      <div style="margin: 0.75rem 0 0.5rem; display: flex; align-items: center; gap: 0.75rem;">
+        <label for="kg-user-count" style="font-size:0.75rem; color: var(--text-muted); white-space: nowrap;">Top users shown:</label>
+        <input type="range" id="kg-user-count" min="5" max="100" value="50" step="5" style="flex:1; max-width:220px; accent-color: var(--accent);">
+        <span id="kg-user-count-label" style="font-size:0.75rem; color: var(--text-muted); min-width: 2rem;">50</span>
+      </div>
+
       <div id="kg-container">
         <svg id="kg-svg"></svg>
       </div>
@@ -531,6 +537,12 @@ function initAll(data) {
   // Each chart is isolated — a failure in one never blocks the others
   const run = (fn, label) => { try { fn(data); } catch(e) { console.error(label + ':', e); } };
   run(buildKnowledgeGraph,'buildKnowledgeGraph');
+  const kgSlider = document.getElementById('kg-user-count');
+  const kgLabel  = document.getElementById('kg-user-count-label');
+  kgSlider.addEventListener('input', () => {
+    kgLabel.textContent = kgSlider.value;
+    try { buildKnowledgeGraph(data, +kgSlider.value); } catch(e) { console.error('buildKnowledgeGraph:', e); }
+  });
   run(buildHeatmap,       'buildHeatmap');
   run(buildDailyChart,    'buildDailyChart');
   run(buildHourlyChart,   'buildHourlyChart');
@@ -589,16 +601,23 @@ function fmtBytes(b) {
    KNOWLEDGE GRAPH  (D3 force-directed)
    Users ↔ Page categories — edge weight = total requests from that user
 ══════════════════════════════════════════════════════════════════════════ */
-function buildKnowledgeGraph(data) {
+function buildKnowledgeGraph(data, topN = 50) {
   const container = document.getElementById('kg-container');
   const W = container.clientWidth || 900;
   const H = 560;
+
+  // ── Top-N users by total requests ─────────────────────────────────────
+  const topUsers = [...data.users]
+    .sort((a, b) => b.total_requests - a.total_requests)
+    .slice(0, topN);
+  const topUserIds = new Set(topUsers.map(u => u.id));
 
   // ── Aggregate user → category request counts ─────────────────────────
   const pagesCat = {};
   data.pages.forEach(p => { pagesCat[p.path] = p.category; });
   const edgeMap = {};
   data.bubble_matrix.forEach(b => {
+    if (!topUserIds.has(b.user)) return;
     const cat = pagesCat[b.page];
     if (!cat) return;
     const key = `u:${b.user}||c:${cat}`;
@@ -606,7 +625,7 @@ function buildKnowledgeGraph(data) {
   });
 
   // ── Nodes ─────────────────────────────────────────────────────────────
-  const userNodes = data.users.map(u => ({
+  const userNodes = topUsers.map(u => ({
     id: 'u:' + u.id, label: u.id, type: 'user',
     role: u.role, total: u.total_requests, bytes: u.total_bytes,
   }));
