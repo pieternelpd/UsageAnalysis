@@ -1,4 +1,4 @@
-# ISS Usage Analytics Dashboard
+# IIS Usage Analytics Dashboard
 
 A self-contained, single-file HTML dashboard for visualising 30-day IIS web access logs.
 No build step, no server required — open `index.html` directly in a browser.
@@ -24,7 +24,7 @@ UsageAnalysis/
 ├── index.html          # Dashboard — all HTML, CSS, and JS in one file
 ├── generate_logs.py    # Synthetic log generator
 └── logs/
-    ├── iss_access.log  # Raw IIS W3C Extended Log Format output
+    ├── iis_access.log  # Raw IIS W3C Extended Log Format output
     └── usage_data.json # Pre-aggregated JSON (also embedded in index.html)
 ```
 
@@ -42,7 +42,7 @@ Output summary printed to stdout:
 
 ```
 Generated 25,514 log entries
-Written logs/iss_access.log
+Written logs/iis_access.log
 Written logs/usage_data.json
 
 Total requests : 25,514
